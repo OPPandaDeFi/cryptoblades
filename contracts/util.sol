@@ -29,6 +29,11 @@ library RandomUtil {
         return num.sub(tenPercent).add(randomSeededMinMax(0, tenPercent.mul(2), seed));
     }
 
+    function plusMinusPercentSeeded(uint256 num, uint256 seed, uint256 percent) internal pure returns (uint256) {
+        uint256 customPercent = num.mul(percent).div(100);
+        return num.sub(customPercent).add(randomSeededMinMax(0, customPercent.mul(2), seed));
+    }
+
     function uint2str(uint _i) internal pure returns (string memory _uintAsString) {
         if (_i == 0) {
             return "0";

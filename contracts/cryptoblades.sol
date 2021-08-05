@@ -11,6 +11,7 @@ import "./interfaces/IRandoms.sol";
 import "./interfaces/IPriceOracle.sol";
 import "./characters.sol";
 import "./Promos.sol";
+import "./Buffs.sol";
 import "./weapons.sol";
 import "./util.sol";
 import "./Blacksmith.sol";
@@ -19,6 +20,8 @@ contract CryptoBlades is Initializable, AccessControlUpgradeable {
     using ABDKMath64x64 for int128;
     using SafeMath for uint256;
     using SafeMath for uint64;
+    using SafeMath for uint24;
+    using SafeMath for uint16;
     using SafeERC20 for IERC20;
 
     bytes32 public constant GAME_ADMIN = keccak256("GAME_ADMIN");
@@ -92,6 +95,12 @@ contract CryptoBlades is Initializable, AccessControlUpgradeable {
         blacksmith = _blacksmith;
     }
 
+    function migrateTo_ef994e2_new(Buffs _buffs) public {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Not admin");
+
+        buffs = _buffs;
+    }
+
     // UNUSED; KEPT FOR UPGRADEABILITY PROXY COMPATIBILITY
     uint characterLimit;
     // config vars
@@ -137,6 +146,8 @@ contract CryptoBlades is Initializable, AccessControlUpgradeable {
     int128 public reforgeWeaponWithDustFee;
 
     Blacksmith public blacksmith;
+
+    Buffs public buffs;
 
     event FightOutcome(address indexed owner, uint256 indexed character, uint256 weapon, uint32 target, uint24 playerRoll, uint24 enemyRoll, uint16 xpGain, uint256 skillGain);
     event InGameOnlyFundsGiven(address indexed to, uint256 skillAmount);
@@ -325,8 +336,13 @@ contract CryptoBlades is Initializable, AccessControlUpgradeable {
         uint8 fightMultiplier
     ) private {
         uint256 seed = randoms.getRandomSeed(msg.sender);
+
+        uint256 strBoost = buffs.get(msg.sender, buffs.STR_BOOST());
+        if (strBoost > 0) {
+            playerFightPower = playerFightPower + uint24(playerFightPower.mul(strBoost).div(100));
+        }
         uint24 playerRoll = getPlayerPowerRoll(playerFightPower,traitsCWE,seed);
-        uint24 monsterRoll = getMonsterPowerRoll(targetPower, RandomUtil.combineSeeds(seed,1));
+        uint24 monsterRoll = getMonsterPowerRoll(targetPower, RandomUtil.combineSeeds(seed,1), buffs.get(msg.sender, buffs.ENEMY_SPREAD()));
 
         uint16 xp = getXpGainForFight(playerFightPower, targetPower) * fightMultiplier;
         uint256 tokens = usdToSkill(getTokenGainForFight(targetPower, fightMultiplier));
@@ -342,6 +358,11 @@ contract CryptoBlades is Initializable, AccessControlUpgradeable {
 
         // this may seem dumb but we want to avoid guessing the outcome based on gas estimates!
         tokenRewards[msg.sender] += tokens;
+
+        uint256 xpBoost = buffs.get(msg.sender, buffs.XP_BOOST());
+        if (xpBoost > 0) {
+            xp = xp + uint16(xp.mul(xpBoost).div(100));
+        }
         xpRewards[char] += xp;
 
         // if (playerRoll > monsterRoll && isUnlikely(uint24(getPlayerTraitBonusAgainst(traitsCWE).mulu(playerFightPower)), targetPower)) {
@@ -380,8 +401,12 @@ contract CryptoBlades is Initializable, AccessControlUpgradeable {
         return uint24(getPlayerTraitBonusAgainst(traitsCWE).mulu(playerPower));
     }
 
-    function getMonsterPowerRoll(uint24 monsterPower, uint256 seed) internal pure returns(uint24) {
+    function getMonsterPowerRoll(uint24 monsterPower, uint256 seed, uint256 customPercent) internal pure returns(uint24) {
         // roll for fights
+        if (customPercent > 0) {
+            return uint24(RandomUtil.plusMinusPercentSeeded(monsterPower, seed, customPercent));
+        }
+
         return uint24(RandomUtil.plusMinus10PercentSeeded(monsterPower, seed));
     }
 

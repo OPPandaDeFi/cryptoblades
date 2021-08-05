@@ -106,6 +106,8 @@ contract Characters is Initializable, ERC721Upgradeable, AccessControlUpgradeabl
 
     uint256 public characterLimit;
 
+    bytes32 public constant SHOP_KEEPER = keccak256("SHOP_KEEPER");
+
     event NewCharacter(uint256 indexed character, address indexed minter);
     event LevelUp(address indexed owner, uint256 indexed character, uint16 level);
 
@@ -116,6 +118,15 @@ contract Characters is Initializable, ERC721Upgradeable, AccessControlUpgradeabl
 
     function _restricted() internal view {
         require(hasRole(GAME_ADMIN, msg.sender), "Not game admin");
+    }
+
+    modifier shopKeeper() {
+        _shopKeeper();
+        _;
+    }
+
+    function _shopKeeper() internal view {
+        require(hasRole(SHOP_KEEPER, msg.sender), "Not shop keeper");
     }
 
     modifier noFreshLookup(uint256 id) {
@@ -204,6 +215,11 @@ contract Characters is Initializable, ERC721Upgradeable, AccessControlUpgradeabl
 
     function getTrait(uint256 id) public view noFreshLookup(id) returns (uint8) {
         return tokens[id].trait;
+    }
+
+    function setTrait(uint256 id, uint8 trait) public shopKeeper {
+        require(trait >= 0 && trait < 4, "Invalid trait provided");
+        tokens[id].trait = trait;
     }
 
     function getXp(uint256 id) public view noFreshLookup(id) returns (uint32) {
